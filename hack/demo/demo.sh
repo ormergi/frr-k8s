@@ -1,9 +1,19 @@
 #!/bin/bash
 set -x
 
+function docker_get_br_net_by_subnet() {
+    docker network ls -f 'driver=bridge' -q | xargs docker network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$1"'")) | .Name'
+}
+
+function podman_get_br_net_by_subnet() {
+    podman network ls -f 'driver=bridge' -q | xargs podman network inspect | jq -r 'try .[] | select(any(.subnets[]; .subnet=="'"$1"'")) | .name'
+}
+
 CLI=docker
+CLI_BR_NET_BY_SUBNET_FN="docker_get_br_net_by_subnet"
 if ! command -v $CLI; then
     CLI=podman
+    CLI_BR_NET_BY_SUBNET_FN="podman_get_br_net_by_subnet"
 fi
 
 echo "CLI is: $CLI"
@@ -38,7 +48,7 @@ function getNodeGatewayAndNetwork() {
     GW_IP=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].local')
     PREFIX=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].prefixlen')
     SUBNET=$($IP_CMD -j -d route get fibmatch $NODE | jq -r '.[] | .dst')
-    NETWORK=$($CLI network ls -f 'driver=bridge' -q | xargs $CLI network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$SUBNET"'")) | .Name')
+    NETWORK=$(eval $CLI_BR_NET_BY_SUBNET_FN $SUBNET)
     if [ -z "$NETWORK" ]; then
         # assume libvirt
 	    NETWORK=host

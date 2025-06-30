@@ -1,0 +1,100 @@
+From 5ac0d471a2c6921dfbe06f18e066a59ff16c8a6d Mon Sep 17 00:00:00 2001
+From: Or Mergi <ormergi@redhat.com>
+Date: Mon, 30 Jun 2025 12:24:52 +0300
+Subject: [PATCH] hack,demo: Enable podman support
+
+Signed-off-by: Or Mergi <ormergi@redhat.com>
+---
+ hack/demo/demo.sh                             | 12 ++++-
+ ...0002-hack-demo-Enable-podman-support.patch | 46 +++++++++++++++++++
+ 2 files changed, 57 insertions(+), 1 deletion(-)
+ create mode 100644 patches/0002-hack-demo-Enable-podman-support.patch
+
+diff --git a/hack/demo/demo.sh b/hack/demo/demo.sh
+index 47cd64c..93064fd 100755
+--- a/hack/demo/demo.sh
++++ b/hack/demo/demo.sh
+@@ -1,9 +1,19 @@
+ #!/bin/bash
+ set -x
+ 
++function docker_get_br_net_by_subnet() {
++    docker network ls -f 'driver=bridge' -q | xargs docker network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$1"'")) | .Name'
++}
++
++function podman_get_br_net_by_subnet() {
++    podman network ls -f 'driver=bridge' -q | xargs podman network inspect | jq -r 'try .[] | select(any(.subnets[]; .subnet=="'"$1"'")) | .name'
++}
++
+ CLI=docker
++CLI_BR_NET_BY_SUBNET_FN="docker_get_br_net_by_subnet"
+ if ! command -v $CLI; then
+     CLI=podman
++    CLI_BR_NET_BY_SUBNET_FN="podman_get_br_net_by_subnet"
+ fi
+ 
+ echo "CLI is: $CLI"
+@@ -38,7 +48,7 @@ function getNodeGatewayAndNetwork() {
+     GW_IP=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].local')
+     PREFIX=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].prefixlen')
+     SUBNET=$($IP_CMD -j -d route get fibmatch $NODE | jq -r '.[] | .dst')
+-    NETWORK=$($CLI network ls -f 'driver=bridge' -q | xargs $CLI network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$SUBNET"'")) | .Name')
++    NETWORK=$(eval $CLI_BR_NET_BY_SUBNET_FN $SUBNET)
+     if [ -z "$NETWORK" ]; then
+         # assume libvirt
+ 	    NETWORK=host
+diff --git a/patches/0002-hack-demo-Enable-podman-support.patch b/patches/0002-hack-demo-Enable-podman-support.patch
+new file mode 100644
+index 0000000..0be88f2
+--- /dev/null
++++ b/patches/0002-hack-demo-Enable-podman-support.patch
+@@ -0,0 +1,46 @@
++From 9678774fafbba6b2799abe8899e0a20d9253757a Mon Sep 17 00:00:00 2001
++From: Or Mergi <ormergi@redhat.com>
++Date: Mon, 30 Jun 2025 12:24:52 +0300
++Subject: [PATCH] hack,demo: Enable podman support
++
++Signed-off-by: Or Mergi <ormergi@redhat.com>
++---
++ hack/demo/demo.sh | 12 +++++++++++-
++ 1 file changed, 11 insertions(+), 1 deletion(-)
++
++diff --git a/hack/demo/demo.sh b/hack/demo/demo.sh
++index 47cd64c..93064fd 100755
++--- a/hack/demo/demo.sh
+++++ b/hack/demo/demo.sh
++@@ -1,9 +1,19 @@
++ #!/bin/bash
++ set -x
++ 
+++function docker_get_br_net_by_subnet() {
+++    docker network ls -f 'driver=bridge' -q | xargs docker network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$1"'")) | .Name'
+++}
+++
+++function podman_get_br_net_by_subnet() {
+++    podman network ls -f 'driver=bridge' -q | xargs podman network inspect | jq -r 'try .[] | select(any(.subnets[]; .subnet=="'"$1"'")) | .name'
+++}
+++
++ CLI=docker
+++CLI_BR_NET_BY_SUBNET_FN="docker_get_br_net_by_subnet"
++ if ! command -v $CLI; then
++     CLI=podman
+++    CLI_BR_NET_BY_SUBNET_FN="podman_get_br_net_by_subnet"
++ fi
++ 
++ echo "CLI is: $CLI"
++@@ -38,7 +48,7 @@ function getNodeGatewayAndNetwork() {
++     GW_IP=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].local')
++     PREFIX=$($IP_CMD -d -j address show $GW_IFACE | jq -r '.[] | .addr_info[0].prefixlen')
++     SUBNET=$($IP_CMD -j -d route get fibmatch $NODE | jq -r '.[] | .dst')
++-    NETWORK=$($CLI network ls -f 'driver=bridge' -q | xargs $CLI network inspect | jq -r 'try .[] | select(any(.IPAM.Config[]; .Subnet=="'"$SUBNET"'")) | .Name')
+++    NETWORK=$(eval $CLI_BR_NET_BY_SUBNET_FN $SUBNET)
++     if [ -z "$NETWORK" ]; then
++         # assume libvirt
++ 	    NETWORK=host
++-- 
++2.49.0
++
+-- 
+2.49.0
+
